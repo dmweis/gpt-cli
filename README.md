@@ -10,7 +10,6 @@ Rust CLI for chat gpt
 
 Get key from [OpenAI account](https://platform.openai.com/account/api-keys)
 
-
 ## ChatGPT cli
 
 `cargo run --bin gpt-cli` to run cli (it's also the default target for `cargo run`)
