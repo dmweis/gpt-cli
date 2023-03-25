@@ -39,7 +39,7 @@ Answer as concisely as possible. Knowledge cutoff year {} Current date and time:
     instructions.insert(
         "joi",
         format!(
-            "You are Joi. The cheerful and helpful AI assistant. 
+            "You are Joi. The cheerful and helpful AI assistant. Answer as concisely as possible.
 Knowledge cutoff year {} Current date and time: {}",
             CHAT_GPT_KNOWLEDGE_CUTOFF, current_time_str
         ),

@@ -138,10 +138,13 @@ impl ChatHistory {
     }
 
     /// generate next message
+    // maybe temperature and top_p should be part of the struct
     pub async fn next_message(
         &mut self,
         user_message: &str,
         client: &Client,
+        temperature: Option<f32>,
+        top_p: Option<f32>,
     ) -> anyhow::Result<String> {
         let user_message = ChatCompletionRequestMessageArgs::default()
             .content(user_message)
@@ -150,10 +153,22 @@ impl ChatHistory {
 
         self.history.push(user_message);
 
-        let request = CreateChatCompletionRequestArgs::default()
+        // request builder setup is a bit more complicated because of the optional parameters
+        let mut request_builder = CreateChatCompletionRequestArgs::default();
+
+        request_builder
             .model(CHAT_GPT_MODEL_NAME)
-            .messages(self.history.clone())
-            .build()?;
+            .messages(self.history.clone());
+
+        if let Some(temperature) = temperature {
+            request_builder.temperature(temperature);
+        }
+
+        if let Some(top_p) = top_p {
+            request_builder.top_p(top_p);
+        }
+
+        let request = request_builder.build()?;
 
         let response = client.chat().create(request).await?;
 
@@ -171,11 +186,14 @@ impl ChatHistory {
     }
 
     /// stream next message to terminal
+    // maybe temperature and top_p should be part of the struct
     pub async fn next_message_stream_stdout(
         &mut self,
         user_message: &str,
         client: &Client,
         term: &Term,
+        temperature: Option<f32>,
+        top_p: Option<f32>,
     ) -> anyhow::Result<String> {
         // this probably shouldn't leak abstraction to terminal
         // but until I have a use case where the abstriction helps this is okay....ish
@@ -186,10 +204,22 @@ impl ChatHistory {
 
         self.history.push(user_message);
 
-        let request = CreateChatCompletionRequestArgs::default()
+        // request builder setup is a bit more complicated because of the optional parameters
+        let mut request_builder = CreateChatCompletionRequestArgs::default();
+
+        request_builder
             .model(CHAT_GPT_MODEL_NAME)
-            .messages(self.history.clone())
-            .build()?;
+            .messages(self.history.clone());
+
+        if let Some(temperature) = temperature {
+            request_builder.temperature(temperature);
+        }
+
+        if let Some(top_p) = top_p {
+            request_builder.top_p(top_p);
+        }
+
+        let request = request_builder.build()?;
 
         let mut stream = client.chat().create_stream(request).await?;
 
@@ -223,31 +253,14 @@ impl ChatHistory {
             }
         }
 
-        // this markdown thing doesn't work very well right now
-        // re-render as markdown
-        // consider adding slowdown for effect?
-        // let lines = response_content_buffer.lines().count();
-        // term.clear_last_lines(lines)?;
-        // // this markdown is weird. Doesn't render correctly I think
-        // let markdown = termimad::inline(&response_content_buffer);
-        // term.write_line(&format!("{}", markdown))?;
-
         // empty new line after stream is done
-
         term.write_line("\n")?;
 
         // print usage recorded
-        if let Some(token_usage) = self.token_usage.as_ref() {
-            let msg = format!("{INCREASING_TREND_EMOJI} Recorded usage {}/{CHAT_GPT_MODEL_TOKEN_LIMIT} tokens used",token_usage.total_tokens);
-            term.write_line(&msg)?;
+        if let Some(token_usage) = self.token_usage_message() {
+            term.write_line(&token_usage)?;
         }
-
-        // print usage calculated
-        let usage_msg = format!(
-            "{INCREASING_TREND_EMOJI} Estimated usage {}/{CHAT_GPT_MODEL_TOKEN_LIMIT} tokens used",
-            self.count_tokens()
-        );
-        term.write_line(&usage_msg)?;
+        term.write_line(&self.token_count_message())?;
 
         term.show_cursor()?;
 
@@ -283,18 +296,11 @@ impl ChatHistory {
 
         term.write_line("")?;
         // print usage recorded
-        if let Some(token_usage) = self.token_usage.as_ref() {
-            term.write_line(&format!(
-                "{INCREASING_TREND_EMOJI} Recorded usage {}/{CHAT_GPT_MODEL_TOKEN_LIMIT} tokens",
-                token_usage.total_tokens
-            ))?;
+        if let Some(token_usage) = self.token_usage_message() {
+            term.write_line(&token_usage)?;
         }
+        term.write_line(&self.token_count_message())?;
 
-        // print usage calculated
-        term.write_line(&format!(
-            "{INCREASING_TREND_EMOJI} Estimated usage {}/{CHAT_GPT_MODEL_TOKEN_LIMIT} tokens",
-            self.count_tokens()
-        ))?;
         term.write_line("---------------------------------")?;
         Ok(())
     }
@@ -320,11 +326,8 @@ impl ChatHistory {
 
         let file_path = cache_dir.join(format!("{title}{time}.yaml"));
 
-        let history_for_storage: Vec<ChatHistoryElement> =
-            self.history.iter().map(|element| element.into()).collect();
-
         let history_storage = ChatHistoryStorage {
-            messages: history_for_storage,
+            messages: self.history.clone(),
         };
 
         let file = std::fs::File::create(file_path)?;
@@ -352,37 +355,29 @@ impl ChatHistory {
     pub fn load_from_file(file_path: &Path) -> anyhow::Result<ChatHistory> {
         let file = std::fs::File::open(file_path)?;
         let chat_history: ChatHistoryStorage = serde_yaml::from_reader(file)?;
-        let converted_history_list: Vec<ChatCompletionRequestMessage> = chat_history
-            .messages
-            .into_iter()
-            .map(|message| message.into())
-            .collect();
+
         Ok(ChatHistory {
-            history: converted_history_list,
+            history: chat_history.messages,
             token_usage: None,
             conversation_start: None,
             conversation_title: None,
         })
     }
-}
 
-impl From<&ChatCompletionRequestMessage> for ChatHistoryElement {
-    fn from(source: &ChatCompletionRequestMessage) -> Self {
-        Self {
-            role: source.role.clone(),
-            content: source.content.clone(),
-            name: source.name.clone(),
-        }
+    pub fn token_count_message(&self) -> String {
+        format!(
+            "{INCREASING_TREND_EMOJI} Estimated usage {}/{CHAT_GPT_MODEL_TOKEN_LIMIT} tokens",
+            self.count_tokens()
+        )
     }
-}
 
-impl From<ChatHistoryElement> for ChatCompletionRequestMessage {
-    fn from(source: ChatHistoryElement) -> Self {
-        Self {
-            role: source.role,
-            content: source.content,
-            name: source.name,
-        }
+    pub fn token_usage_message(&self) -> Option<String> {
+        self.token_usage().as_ref().map(|token_usage| {
+            format!(
+                "{INCREASING_TREND_EMOJI} Recorded usage {}/{CHAT_GPT_MODEL_TOKEN_LIMIT} tokens",
+                token_usage.total_tokens
+            )
+        })
     }
 }
 
@@ -390,17 +385,5 @@ impl From<ChatHistoryElement> for ChatCompletionRequestMessage {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct ChatHistoryStorage {
     /// message
-    pub messages: Vec<ChatHistoryElement>,
-}
-
-/// Used for storage because [ChatCompletionRequestMessage] is not fully serde'd
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct ChatHistoryElement {
-    /// The role of the author of this message.
-    pub role: Role,
-    /// The contents of the message
-    pub content: String,
-    /// The name of the user in a multi-user chat
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
+    pub messages: Vec<ChatCompletionRequestMessage>,
 }

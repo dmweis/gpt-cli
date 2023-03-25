@@ -5,14 +5,12 @@ mod utils;
 
 use anyhow::Context;
 use async_openai::Client;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use cli_history::InMemoryHistory;
-use configuration::AppConfig;
-use dialoguer::{console::Term, theme::ColorfulTheme, FuzzySelect, Input};
+use configuration::{AppConfig, OPEN_AI_API_KEY_WEB_URL};
+use dialoguer::{console::Term, theme::ColorfulTheme, FuzzySelect, Input, Password};
 use std::path::PathBuf;
-use utils::{
-    generate_system_instructions, CHAT_GPT_MODEL_TOKEN_LIMIT, INCREASING_TREND_EMOJI, ROBOT_EMOJI,
-};
+use utils::{generate_system_instructions, ROBOT_EMOJI};
 
 #[derive(Parser)]
 #[command()]
@@ -23,31 +21,67 @@ struct Cli {
     /// list files
     #[arg(long)]
     select_file: bool,
-    /// save conversation history
-    #[arg(long, default_value_t = true)]
-    save: bool,
-    /// save default config and exit
+    /// don't save conversation history
     #[arg(long)]
-    create_config: bool,
-    /// stream
-    #[arg(long, default_value_t = true)]
-    stream: bool,
+    no_save: bool,
+    /// disable streaming
+    #[arg(long)]
+    no_stream: bool,
+
+    /// What sampling temperature to use, between 0 and 2. Higher values like 0.8 will make the output more random, while lower values like 0.2 will make it more focused and deterministic.
+    ///
+    /// We generally recommend altering this or `top_p` but not both.
+    #[arg(long)]
+    temperature: Option<f32>,
+
+    /// An alternative to sampling with temperature, called nucleus sampling, where the model considers the results of the tokens with top_p probability mass. So 0.1 means only the tokens comprising the top 10% probability mass are considered.
+    /// min: 0, max: 1, default: 1
+    ///  We generally recommend altering this or `temperature` but not both.
+    #[arg(long)]
+    top_p: Option<f32>,
+
+    #[command(subcommand)]
+    command: Option<Commands>,
 }
+
+#[derive(Subcommand)]
+enum Commands {
+    /// login
+    Login,
+    /// create default config
+    CreateConfig,
+}
+
+// #[derive(Args)]
+// struct LoginArgs {}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let mut cli = Cli::parse();
 
-    if cli.create_config {
-        // write default config
-        let config_new = AppConfig::default();
-        config_new.save_user_config()?;
-        return Ok(());
-    }
-
     let term = Term::stdout();
     let mut history = InMemoryHistory::default();
     let term_theme = ColorfulTheme::default();
+
+    match cli.command {
+        Some(Commands::Login) => {
+            term.write_line(&format!("Get token from {OPEN_AI_API_KEY_WEB_URL}"))?;
+            let api_key: String = Password::with_theme(&term_theme)
+                .with_prompt("API key:")
+                .interact_on(&term)?;
+            let config = AppConfig::new(api_key);
+            config.save_user_config()?;
+            term.write_line("Login successful")?;
+            return Ok(());
+        }
+        Some(Commands::CreateConfig) => {
+            // write default config
+            let config_new = AppConfig::default();
+            config_new.save_user_config()?;
+            return Ok(());
+        }
+        None => {}
+    }
 
     if cli.select_file {
         let files = chat_manager::ChatHistory::get_all_saved_conversations()?;
@@ -86,6 +120,8 @@ async fn main() -> anyhow::Result<()> {
         chat_manager::ChatHistory::new(&system_messages["joi"])?
     };
 
+    term.write_line("Write /? to get help")?;
+
     loop {
         let mut user_question: String = Input::with_theme(&term_theme)
             .with_prompt("Question:")
@@ -123,33 +159,32 @@ async fn main() -> anyhow::Result<()> {
 
         term.write_line(&format!("\n{ROBOT_EMOJI} ChatGPT:\n"))?;
 
-        if cli.stream {
+        if !cli.no_stream {
             let _response = chat_manager
-                .next_message_stream_stdout(&user_question, &client, &term)
+                .next_message_stream_stdout(
+                    &user_question,
+                    &client,
+                    &term,
+                    cli.temperature,
+                    cli.top_p,
+                )
                 .await?;
         } else {
-            let response = chat_manager.next_message(&user_question, &client).await?;
+            let response = chat_manager
+                .next_message(&user_question, &client, cli.temperature, cli.top_p)
+                .await?;
 
             term.write_line(&response)?;
-
+            term.write_line("")?;
             // print usage
-            if let Some(token_usage) = chat_manager.token_usage() {
-                term.write_line(&format!(
-                    "\n{INCREASING_TREND_EMOJI} Recorded usage {}/{CHAT_GPT_MODEL_TOKEN_LIMIT} tokens used",
-                    token_usage.total_tokens
-                ))?;
+            if let Some(token_usage) = chat_manager.token_usage_message() {
+                term.write_line(&token_usage)?;
             }
-
-            // print usage calculated
-            term.write_line(&format!(
-                "{INCREASING_TREND_EMOJI} Estimated usage {}/{CHAT_GPT_MODEL_TOKEN_LIMIT} tokens used",
-                chat_manager.count_tokens()
-            ))?;
-
+            term.write_line(&chat_manager.token_count_message())?;
             term.write_line("")?;
         }
 
-        if cli.save {
+        if !cli.no_save {
             chat_manager.save_to_file()?;
         }
     }

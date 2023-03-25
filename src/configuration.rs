@@ -11,6 +11,8 @@ const PROJECT_APPLICATION_NAME: &str = "gpt-cli";
 const GPT_CLI_CONFIG_FILE_NAME: &str = "config";
 const GPT_CLI_CONFIG_FILE_EXTENSION: &str = "yaml";
 
+pub const OPEN_AI_API_KEY_WEB_URL: &str = "https://platform.openai.com/account/api-keys";
+
 pub fn get_project_dirs() -> Result<ProjectDirs> {
     ProjectDirs::from(
         PROJECT_QUALIFIER,
@@ -34,14 +36,18 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            open_ai_api_key: String::from(
-                "Get token from https://platform.openai.com/account/api-keys",
-            ),
+            open_ai_api_key: format!("Get token from {OPEN_AI_API_KEY_WEB_URL}",),
         }
     }
 }
 
 impl AppConfig {
+    pub fn new(api_key: String) -> Self {
+        Self {
+            open_ai_api_key: api_key,
+        }
+    }
+
     pub fn load_user_config() -> anyhow::Result<Self> {
         let config_file_path = get_config_file_path()?;
         let settings = Config::builder()
