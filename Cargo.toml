@@ -1,0 +1,37 @@
+[package]
+authors = ["David Michael Weis <dweis7@gmail.com>"]
+description = "OpenAI playground"
+edition = "2021"
+license = "MIT OR APACHE"
+name = "gpt-cli"
+publish = false
+readme = "README.md"
+repository = "https://github.com/dmweis/gpt-cli"
+version = "0.1.0"
+
+[dependencies]
+async-trait = "0.1.66"
+futures = "0.3"
+tokio = {version = "1.25", features = ["macros", "rt-multi-thread"]}
+
+anyhow = "1.0"
+thiserror = "1.0"
+
+# openai
+# async-openai = {git = "https://github.com/dmweis/async-openai.git", branch = "main"}
+async-openai = {version = "0.10.0"}
+# this lib is a bit odd
+tiktoken-rs = {git = "https://github.com/dmweis/tiktoken-rs.git", branch = "optional_python"}
+
+clap = {version = "4.1.8", features = ["derive"]}
+config = "0.13.3"
+
+serde = {version = "1.0", features = ["derive"]}
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# terminal stuff
+chrono = "0.4"
+dialoguer = {version = "0.10.3", features = ["history", "fuzzy-select"]}
+directories = "4.0"
+termimad = "0.22"
