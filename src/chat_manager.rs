@@ -318,13 +318,8 @@ impl ChatHistory {
             .unwrap_or_else(Local::now)
             .to_rfc3339();
 
-        let title = self
-            .conversation_title
-            .clone()
-            .map(|title| format!("{title}_"))
-            .unwrap_or_default();
-
-        let file_path = cache_dir.join(format!("{title}{time}.yaml"));
+        let title = self.conversation_title.as_deref().unwrap_or_default();
+        let file_path = cache_dir.join(format!("{time}_{title}.yaml"));
 
         let history_storage = ChatHistoryStorage {
             messages: self.history.clone(),
