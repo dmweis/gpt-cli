@@ -19,7 +19,7 @@ thiserror = "1.0"
 
 # openai
 # async-openai = {git = "https://github.com/dmweis/async-openai.git", branch = "main"}
-async-openai = {version = "0.10.0"}
+async-openai = {version = "0.10.3"}
 # this lib is a bit odd
 tiktoken-rs = {git = "https://github.com/dmweis/tiktoken-rs.git", branch = "optional_python"}
 
@@ -33,4 +33,4 @@ serde_yaml = "0.9"
 # terminal stuff
 chrono = "0.4"
 dialoguer = {version = "0.10.3", features = ["history", "fuzzy-select"]}
-directories = "4.0"
+directories = "5.0.0"
