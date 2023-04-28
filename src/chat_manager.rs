@@ -1,9 +1,6 @@
 use crate::{
     configuration::get_project_dirs,
-    utils::{
-        CHAT_GPT_MODEL_NAME, CHAT_GPT_MODEL_TOKEN_LIMIT, INCREASING_TREND_EMOJI,
-        QUESTION_MARK_EMOJI, ROBOT_EMOJI, SYSTEM_EMOJI,
-    },
+    utils::{INCREASING_TREND_EMOJI, QUESTION_MARK_EMOJI, ROBOT_EMOJI, SYSTEM_EMOJI},
 };
 use anyhow::{Context, Result};
 use async_openai::{
@@ -20,18 +17,41 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tiktoken_rs::cl100k_base;
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModelMetadata {
+    pub name: String,
+    pub token_limit: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AssistantMetadata {
+    pub system_prompt: String,
+}
+
+impl AssistantMetadata {
+    pub fn new(system_prompt: String) -> Self {
+        Self { system_prompt }
+    }
+}
+
 /// Manager for conversations
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatHistory {
     history: Vec<ChatCompletionRequestMessage>,
     token_usage: Option<Usage>,
     conversation_start: Option<DateTime<Local>>,
     conversation_title: Option<String>,
+    model_metadata: ModelMetadata,
+    assistant_metadata: AssistantMetadata,
 }
 
 impl ChatHistory {
-    pub fn new(prompt: &str) -> anyhow::Result<Self> {
+    pub fn new(
+        model_metadata: ModelMetadata,
+        assistant_metadata: AssistantMetadata,
+    ) -> anyhow::Result<Self> {
         let history = vec![ChatCompletionRequestMessageArgs::default()
-            .content(prompt)
+            .content(assistant_metadata.system_prompt.clone())
             .role(Role::System)
             .build()?];
         let dt: DateTime<Local> = Local::now();
@@ -40,6 +60,8 @@ impl ChatHistory {
             token_usage: None,
             conversation_start: Some(dt),
             conversation_title: None,
+            model_metadata,
+            assistant_metadata,
         })
     }
 
@@ -121,7 +143,7 @@ impl ChatHistory {
         history_copy.push(user_message);
 
         let request = CreateChatCompletionRequestArgs::default()
-            .model(CHAT_GPT_MODEL_NAME)
+            .model(&self.model_metadata.name)
             .messages(history_copy)
             .build()?;
 
@@ -157,7 +179,7 @@ impl ChatHistory {
         let mut request_builder = CreateChatCompletionRequestArgs::default();
 
         request_builder
-            .model(CHAT_GPT_MODEL_NAME)
+            .model(&self.model_metadata.name)
             .messages(self.history.clone());
 
         if let Some(temperature) = temperature {
@@ -208,7 +230,7 @@ impl ChatHistory {
         let mut request_builder = CreateChatCompletionRequestArgs::default();
 
         request_builder
-            .model(CHAT_GPT_MODEL_NAME)
+            .model(&self.model_metadata.name)
             .messages(self.history.clone());
 
         if let Some(temperature) = temperature {
@@ -321,12 +343,8 @@ impl ChatHistory {
         let title = self.conversation_title.as_deref().unwrap_or_default();
         let file_path = cache_dir.join(format!("{time}_{title}.yaml"));
 
-        let history_storage = ChatHistoryStorage {
-            messages: self.history.clone(),
-        };
-
         let file = std::fs::File::create(file_path)?;
-        serde_yaml::to_writer(file, &history_storage)?;
+        serde_yaml::to_writer(file, &self.history)?;
         Ok(())
     }
 
@@ -349,36 +367,24 @@ impl ChatHistory {
     /// load from chat history file
     pub fn load_from_file(file_path: &Path) -> anyhow::Result<ChatHistory> {
         let file = std::fs::File::open(file_path)?;
-        let chat_history: ChatHistoryStorage = serde_yaml::from_reader(file)?;
-
-        Ok(ChatHistory {
-            history: chat_history.messages,
-            token_usage: None,
-            conversation_start: None,
-            conversation_title: None,
-        })
+        let chat_history: ChatHistory = serde_yaml::from_reader(file)?;
+        Ok(chat_history)
     }
 
     pub fn token_count_message(&self) -> String {
         format!(
-            "{INCREASING_TREND_EMOJI} Estimated usage {}/{CHAT_GPT_MODEL_TOKEN_LIMIT} tokens",
-            self.count_tokens()
+            "{INCREASING_TREND_EMOJI} Estimated usage {}/{} tokens",
+            self.count_tokens(),
+            self.model_metadata.token_limit
         )
     }
 
     pub fn token_usage_message(&self) -> Option<String> {
         self.token_usage().as_ref().map(|token_usage| {
             format!(
-                "{INCREASING_TREND_EMOJI} Recorded usage {}/{CHAT_GPT_MODEL_TOKEN_LIMIT} tokens",
-                token_usage.total_tokens
+                "{INCREASING_TREND_EMOJI} Recorded usage {}/{} tokens",
+                token_usage.total_tokens, self.model_metadata.token_limit
             )
         })
     }
-}
-
-/// used for storage
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct ChatHistoryStorage {
-    /// message
-    pub messages: Vec<ChatCompletionRequestMessage>,
 }

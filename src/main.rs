@@ -10,11 +10,16 @@ use cli_history::InMemoryHistory;
 use configuration::{AppConfig, OPEN_AI_API_KEY_WEB_URL};
 use dialoguer::{console::Term, theme::ColorfulTheme, FuzzySelect, Input, Password};
 use std::path::PathBuf;
-use utils::{generate_system_instructions, ROBOT_EMOJI};
+use utils::{
+    generate_system_instructions, ChatGptModel, DEFAULT_SYSTEM_INSTRUCTIONS_KEY, ROBOT_EMOJI,
+};
 
 #[derive(Parser)]
 #[command()]
 struct Cli {
+    /// model to select
+    #[arg(long, value_enum, default_value = "gpt-3-5")]
+    model: ChatGptModel,
     /// load from file
     #[arg(long)]
     file: Option<PathBuf>,
@@ -117,7 +122,10 @@ async fn main() -> anyhow::Result<()> {
     let mut chat_manager = if let Some(path) = cli.file {
         chat_manager::ChatHistory::load_from_file(&path)?
     } else {
-        chat_manager::ChatHistory::new(&system_messages["joi"])?
+        chat_manager::ChatHistory::new(
+            cli.model.to_model_metadata(),
+            system_messages[DEFAULT_SYSTEM_INSTRUCTIONS_KEY].clone(),
+        )?
     };
 
     term.write_line("Write /? to get help")?;
