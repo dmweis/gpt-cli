@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["FIELDS","GPT_CLI_CONFIG_FILE_EXTENSION","GPT_CLI_CONFIG_FILE_NAME","OPEN_AI_API_KEY_WEB_URL","PROJECT_APPLICATION_NAME","PROJECT_ORGANIZATION","PROJECT_QUALIFIER"],"enum":["__Field"],"fn":["get_config_file_path","get_project_dirs"],"struct":["AppConfig","__FieldVisitor","__Visitor"]};

@@ -1,0 +1,3 @@
+(function() {var implementors = {
+"gpt_cli":[["impl&lt;T: <a class=\"trait\" href=\"https://doc.rust-lang.org/1.69.0/alloc/string/trait.ToString.html\" title=\"trait alloc::string::ToString\">ToString</a>&gt; History&lt;T&gt; for <a class=\"struct\" href=\"gpt_cli/cli_history/struct.InMemoryHistory.html\" title=\"struct gpt_cli::cli_history::InMemoryHistory\">InMemoryHistory</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
